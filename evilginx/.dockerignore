@@ -1,0 +1,8 @@
+# CRITICAL: without this, Docker's COPY ./config /config and COPY ./phishlets /phishlets steps
+# also copy the .template files into the image alongside the real generated config.json and
+# am-phishlet.yaml. Evilginx then loads BOTH as phishlets, and the .template file (which still
+# has raw <placeholder> tokens, e.g. unsubstituted phish_sub) silently wins/overrides the correct
+# one in memory - causing "hostname unsupported" for every single request, with the real
+# config.json/am-phishlet.yaml on disk looking completely correct the whole time. This was the
+# root cause of a very long, very confusing debugging session - don't remove this file.
+**/*.template
