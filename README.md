@@ -32,32 +32,21 @@ public internet without real access control in front of it.
 
 ## Quick start (run it yourself, locally)
 
-**1. Preflight - confirm your tree's real request shapes first.** Don't skip this; the defaults
-below are filled in from one real tenant and are very likely wrong for yours in some detail. Open
-your tree's URL normally in a browser, DevTools open, Network tab, "Preserve log" on, and log in
-with a throwaway test account:
+> **Testing a different tenant than the one these docs/defaults are written for?** Do the
+> [preflight checklist](#preflight-checklist-only-if-youre-on-a-different-tenant) before step 1 -
+> the default values below are confirmed correct for one specific tenant and are very likely
+> wrong for yours in some detail. If you're just trying this repo out as documented, skip it.
 
-- Find the exact `POST` your login makes (likely `.../authenticate` under `/am/json/realms/...`
-  somewhere - Identity Cloud nests realms under `root`, e.g.
-  `/am/json/realms/root/realms/<realm>/authenticate`, but confirm the exact path for your tenant).
-  Look at the request body's `callbacks[].type` and `input[].name` and confirm which `IDTokenN`
-  carries the username and which carries the password **on your tree** - don't assume
-  IDToken1/IDToken2. A Protect-enabled tree is more likely than most to insert extra callbacks
-  (device profiling, a hidden step) before the password field, shifting the numbering.
-- Note whether anything in the flow calls `/am/oauth2/access_token` or `/am/oauth2/authorize`. A
-  bare tree login (no relying app requesting an OAuth2 code) usually doesn't - if yours doesn't
-  either, delete the `auth_tokens` block in the phishlet, it'll never match.
-- Note the URL/state you land on right after a successful login.
-
-**2. Set your tenant/journey/phishing-domain values in one place.** Copy the example settings
-file and fill in your own values - every field is explained inline and in the
-[Configuration reference](#configuration-reference) table below:
+**1. Set your tenant/journey/phishing-domain values in one place.** Copy the example settings
+file - the defaults already match the tenant this repo was built and tested against, so you can
+try it with zero edits, or fill in your own values (every field is explained inline and in the
+[Configuration reference](#configuration-reference) table below):
 ```
 cp settings.env.example settings.env
-$EDITOR settings.env
+$EDITOR settings.env   # optional - defaults work as-is
 ```
 
-**3. Generate the real config from your settings:**
+**2. Generate the real config from your settings:**
 ```
 ./generate-config.sh
 ```
@@ -90,26 +79,26 @@ Run the `/etc/hosts` line it gives you (real domain, local-only override - see
 sudo sed -i '' '/phish.iamworld.co.uk/d' /etc/hosts
 ```
 
-**4. Build and run** exactly as printed above. If running interactively (`-it`) exits immediately
+**3. Build and run** exactly as printed above. If running interactively (`-it`) exits immediately
 after printing the phishlet table, Evilginx's own CLI is reading EOF from stdin and quitting -
 that's why the printed command pipes `tail -f /dev/null` into it to keep stdin open. Developer
 mode is already set in `docker-entrypoint.sh` via `-developer -debug` (self-signed certs, verbose
 logging) - keep those flags for local/dev-mode runs.
 
-**5. Browse to the lure URL** `generate-config.sh` printed (accept the self-signed cert warning -
+**4. Browse to the lure URL** `generate-config.sh` printed (accept the self-signed cert warning -
 expected in dev mode; on Chrome, click the warning page body and type `thisisunsafe`, or use
 Advanced -> Proceed). This should redirect you straight into your tree (the `login.path` query
 string trick explained below makes the lure redirect carry your full tree URL, not just a bare
 path). Log in with a throwaway test account - **a tree built specifically for a Protect demo may
 be intentionally tuned to flag things, so don't use an account you rely on elsewhere.**
 
-**6. Check the result.** Evilginx's `-debug` log (stdout) will show the full `/authenticate` POST
+**5. Check the result.** Evilginx's `-debug` log (stdout) will show the full `/authenticate` POST
 bodies, including captured `NameCallback`/`PasswordCallback` values and the
 `PingOneProtectEvaluationCallback`'s `IDToken1signals` token once a login completes. Check
 Protect's own evaluation result on the tenant side (console or API) for the
 `adversaryInTheMiddle` predictor result.
 
-**7. Clean up:** stop the container, remove the `/etc/hosts` line, and consider whether you want
+**6. Clean up:** stop the container, remove the `/etc/hosts` line, and consider whether you want
 to clear any risk history Protect recorded for the test account on your tenant.
 
 ## Configuration reference
@@ -141,7 +130,7 @@ the browser's address bar, not whether the proxy functions.
 - `am-phishlet.yaml`: `redirect_url`, `proxy_hosts[0]`, `auth_tokens[0].domain`, `login.domain`,
   `login.path`.
 
-## Preflight checklist (don't skip this)
+## Preflight checklist (only if you're on a different tenant)
 
 AM's REST auth API drives a dynamic `callbacks` array per tree - there is no universal
 "username is always field X" rule. Confirm, via a real DevTools trace against your own tenant,
@@ -194,17 +183,19 @@ else to put it. This repo's `am-phishlet.yaml` already does this - adapt the pat
 `login.path` if your own tree needs a different query string, or leave it off if your tenant
 needs no query string to reach the tree you're testing.
 
-### 3. The IP whitelist is per-process, wiped on every restart
+### 3. The IP allowlist is per-process, wiped on every restart
 
 Evilginx only creates a tracked session (which is required for credential/signals capture to
 happen at all) when a request matches a configured **lure path**. Once that happens, your IP is
-whitelisted in memory for that phishlet, and *subsequent* requests to any other path on the same
-phishing domain are allowed through without re-matching the lure. This means:
+added to an in-memory allowlist for that phishlet (Evilginx's own logs call this
+`whitelistIP` - that's its internal naming, not this README's), and *subsequent* requests to any
+other path on the same phishing domain are allowed through without re-matching the lure. This
+means:
 - You must hit the lure path (`/YStcNrSR` in `config.json`) **at least once** before navigating
-  directly to any other URL on the phishing domain - a fresh container has no whitelist yet, and
-  a direct hit to anything else gets silently bounced to `unauth_url` (the real site), which can
-  look like the proxy is "redirecting to the real site" for no reason.
-- Every container restart wipes this whitelist (it's in-memory, not persisted), so you need to
+  directly to any other URL on the phishing domain - a fresh container has no allowlist entries
+  yet, and a direct hit to anything else gets silently bounced to `unauth_url` (the real site),
+  which can look like the proxy is "redirecting to the real site" for no reason.
+- Every container restart wipes this allowlist (it's in-memory, not persisted), so you need to
   re-hit the lure after every restart, even if you didn't before.
 
 ## Verifying it actually captured something
@@ -259,27 +250,6 @@ sandbox tenant (not yours), you can try the demo against theirs without any loca
 them for the URL. Note that in that case you are testing against **their** tenant and **their**
 test account, not your own, which is fine for seeing the demo work but doesn't tell you anything
 about your own tenant's Protect configuration.
-
-`phish.iamworld.co.uk` is intended to become one such shared instance against the repo author's
-own sandbox tenant, for anyone who wants to see the demo without setting anything up locally -
-ask the author whether it's live and for the lure URL/test account to use.
-
-If you want to stand up a shared instance yourself for others: **Lambda will not work** -
-Evilginx is a long-running TCP/TLS listener with in-memory session state across a multi-step
-login, none of which fits Lambda's request/response, stateless, cold-starting model. A
-long-running container platform (ECS Fargate, or plain EC2) is the right fit - same image, just
-run continuously instead of locally. If you do this:
-- Use a **Network Load Balancer in TCP passthrough mode**, not an ALB - Evilginx needs the raw
-  TLS bytes itself (it does its own SNI-based routing and cert generation); an ALB would
-  terminate TLS and break that entirely.
-- Point real DNS at the NLB, and switch to production mode (remove `-developer -debug` from
-  `docker-entrypoint.sh`, let `autocert: "on"` do real Let's Encrypt issuance - this needs real
-  inbound reachability for HTTP-01/TLS-ALPN-01 validation).
-- **Restrict who can reach it.** This is a live, working credential/AiTM-capture tool with no
-  login of its own in front of it. Put it behind your corporate VPN or restrict the NLB's
-  security group to known ranges - don't leave it open to the whole internet even for an
-  internal demo, and tear it down or disable the lure when it's not actively being used for a
-  demo.
 
 ## Disclaimer
 
