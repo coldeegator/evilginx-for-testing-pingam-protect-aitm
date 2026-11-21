@@ -95,6 +95,10 @@ click the warning page body and type `thisisunsafe`, or use Advanced -> Proceed)
 ```
 https://<phish_sub-if-any>.<phishing_domain>/YStcNrSR
 ```
+Worked example, continuing from the `phish.iamworld.co.uk` example above:
+```
+https://phish.iamworld.co.uk/YStcNrSR
+```
 This should redirect you straight into your tree (the `login.path` query string trick below
 makes the lure redirect carry your full tree URL, not just a bare path). Log in with a throwaway
 test account - **a tree built specifically for a Protect demo may be intentionally tuned to flag
