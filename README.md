@@ -49,94 +49,97 @@ with a throwaway test account:
   either, delete the `auth_tokens` block in the phishlet, it'll never match.
 - Note the URL/state you land on right after a successful login.
 
-**2. Fill in the placeholders.** Edit `evilginx/config/config.json` and
-`evilginx/phishlets/am-phishlet.yaml` - every `<placeholder>` is explained in the
-[Configuration reference](#configuration-reference) table below.
+**2. Set your tenant/journey/phishing-domain values in one place.** Copy the example settings
+file and fill in your own values - every field is explained inline and in the
+[Configuration reference](#configuration-reference) table below:
+```
+cp settings.env.example settings.env
+$EDITOR settings.env
+```
 
-**3. `/etc/hosts`:**
+**3. Generate the real config from your settings:**
 ```
-sudo -- sh -c -e "echo '127.0.0.1 <phish_sub-if-any>.<phishing_domain>' >> /etc/hosts"
+./generate-config.sh
 ```
-(or just `<phishing_domain>` with no subdomain if you left `phish_sub` blank - see
-[Configuration reference](#configuration-reference)). Remove this line again once you're done.
+This fills in `evilginx/config/config.json` and `evilginx/phishlets/am-phishlet.yaml` from their
+`.template` counterparts and prints the exact `/etc/hosts` line, build/run commands, and lure URL
+for YOUR settings - copy them straight from its output. Both generated files are gitignored
+(`settings.env` is too), so your tenant's details never get committed back to this repo. Re-run
+this script any time you change `settings.env` - it always regenerates cleanly from the
+templates.
 
-**Worked example**, using `phish.iamworld.co.uk` as the phishing domain with a blank `phish_sub`
-(so no subdomain prefix - the bare domain itself is what you add):
+**Worked example output**, using the included `settings.env.example` values
+(`phish.iamworld.co.uk`, blank `phish_sub`):
 ```
-sudo -- sh -c -e "echo '127.0.0.1 phish.iamworld.co.uk' >> /etc/hosts"
+$ ./generate-config.sh
+Generated evilginx/config/config.json and evilginx/phishlets/am-phishlet.yaml.
+
+Next steps, using your settings:
+
+  sudo -- sh -c -e "echo '127.0.0.1 phish.iamworld.co.uk' >> /etc/hosts"
+
+  cd evilginx && docker build -f Dockerfile -t aitm-am-demo:edge .
+  tail -f /dev/null | docker run --rm -i -p 443:443 aitm-am-demo:edge
+
+  https://phish.iamworld.co.uk/YStcNrSR
 ```
-This is a real, publicly-registered domain (see
-[Choosing a phishing domain](#choosing-a-phishing-domain) for why that matters), but the
-`/etc/hosts` line only affects **your own machine** - it does not touch real DNS, does not
-publish anything, and is fully reversible by deleting the line. Remove it when you're done:
+Run the `/etc/hosts` line it gives you (real domain, local-only override - see
+[Choosing a phishing domain](#choosing-a-phishing-domain) for why it should be a real domain, not
+`.local`). Remove it again when you're done:
 ```
 sudo sed -i '' '/phish.iamworld.co.uk/d' /etc/hosts
 ```
 
-**4. Build:**
-```
-cd evilginx
-docker build -f Dockerfile -t aitm-am-demo:edge .
-```
+**4. Build and run** exactly as printed above. If running interactively (`-it`) exits immediately
+after printing the phishlet table, Evilginx's own CLI is reading EOF from stdin and quitting -
+that's why the printed command pipes `tail -f /dev/null` into it to keep stdin open. Developer
+mode is already set in `docker-entrypoint.sh` via `-developer -debug` (self-signed certs, verbose
+logging) - keep those flags for local/dev-mode runs.
 
-**5. Run** (developer mode is already set in `docker-entrypoint.sh` via `-developer -debug` -
-self-signed certs, verbose logging; keep those flags for local/dev-mode runs):
-```
-docker run --rm -it -e TZ=<your-tz> -p 443:443 aitm-am-demo:edge
-```
-If running interactively (`-it`) exits immediately after printing the phishlet table, Evilginx's
-own CLI is reading EOF from stdin and quitting - keep stdin open with:
-```
-tail -f /dev/null | docker run --rm -i -e TZ=<your-tz> -p 443:443 aitm-am-demo:edge
-```
+**5. Browse to the lure URL** `generate-config.sh` printed (accept the self-signed cert warning -
+expected in dev mode; on Chrome, click the warning page body and type `thisisunsafe`, or use
+Advanced -> Proceed). This should redirect you straight into your tree (the `login.path` query
+string trick explained below makes the lure redirect carry your full tree URL, not just a bare
+path). Log in with a throwaway test account - **a tree built specifically for a Protect demo may
+be intentionally tuned to flag things, so don't use an account you rely on elsewhere.**
 
-**6. Browse to the lure** (accept the self-signed cert warning - expected in dev mode; on Chrome,
-click the warning page body and type `thisisunsafe`, or use Advanced -> Proceed):
-```
-https://<phish_sub-if-any>.<phishing_domain>/YStcNrSR
-```
-Worked example, continuing from the `phish.iamworld.co.uk` example above:
-```
-https://phish.iamworld.co.uk/YStcNrSR
-```
-This should redirect you straight into your tree (the `login.path` query string trick below
-makes the lure redirect carry your full tree URL, not just a bare path). Log in with a throwaway
-test account - **a tree built specifically for a Protect demo may be intentionally tuned to flag
-things, so don't use an account you rely on elsewhere.**
-
-**7. Check the result.** Evilginx's `-debug` log (stdout) will show the full `/authenticate` POST
+**6. Check the result.** Evilginx's `-debug` log (stdout) will show the full `/authenticate` POST
 bodies, including captured `NameCallback`/`PasswordCallback` values and the
 `PingOneProtectEvaluationCallback`'s `IDToken1signals` token once a login completes. Check
 Protect's own evaluation result on the tenant side (console or API) for the
 `adversaryInTheMiddle` predictor result.
 
-**8. Clean up:** stop the container, remove the `/etc/hosts` line, and consider whether you want
+**7. Clean up:** stop the container, remove the `/etc/hosts` line, and consider whether you want
 to clear any risk history Protect recorded for the test account on your tenant.
 
 ## Configuration reference
 
-Every placeholder appears in both `config.json` and `am-phishlet.yaml` - keep them consistent.
+Everything below is set **once**, in `settings.env` - `generate-config.sh` fans each value out to
+every place it's needed in `evilginx/config/config.json` and `evilginx/phishlets/am-phishlet.yaml`
+(generated from their `.template` counterparts, which still show the raw `<placeholder>` names if
+you want to see exactly where each value lands).
 
-| Placeholder | What it is | Example |
+| `settings.env` variable | What it is | Example |
 |---|---|---|
-| `<target_sub>` | The subdomain of your REAL tenant | `openam-mycompany` |
-| `<target_domain>` | The base domain of your REAL tenant | `forgeblocks.com` |
-| `<realm>` | The AM realm your tree lives in | `alpha` |
-| `<tree_name>` | The named tree (`authIndexValue`) that has the Protect node | `Demo-Protect-Latest` |
-| `<phishing_domain>` | The domain Evilginx serves the phished page on | `phish.example.com` |
-| `<phish_sub>` | Subdomain prefix on the PHISHING side (not your real tenant's) - see below | `login` or `` (blank) |
+| `TARGET_SUB` | The subdomain of your REAL tenant | `openam-mycompany` |
+| `TARGET_DOMAIN` | The base domain of your REAL tenant | `forgeblocks.com` |
+| `REALM` | The AM realm your tree lives in | `alpha` |
+| `TREE_NAME` | The named tree (`authIndexValue`) that has the Protect node | `Demo-Protect-Latest` |
+| `PHISHING_DOMAIN` | The domain Evilginx serves the phished page on | `phish.example.com` |
+| `PHISH_SUB` | Subdomain prefix on the PHISHING side (not your real tenant's) - see below | `login` or empty |
 
-**`phish_sub` (blank vs a value):** Evilginx builds the browser-facing hostname as
-`phish_sub + "." + phishing_domain`, or just `phishing_domain` alone if `phish_sub` is left as
-`''`. Use a blank `phish_sub` if you want the phished page to appear on the bare domain itself
-(e.g. `phish.example.com` with nothing in front); use a real prefix if you want it to look like a
+**`PHISH_SUB` (blank vs a value):** Evilginx builds the browser-facing hostname as
+`PHISH_SUB + "." + PHISHING_DOMAIN`, or just `PHISHING_DOMAIN` alone if `PHISH_SUB` is left
+blank. Use blank if you want the phished page to appear on the bare domain itself (e.g.
+`phish.example.com` with nothing in front); use a real prefix if you want it to look like a
 subdomain, the same way your real tenant has one. Either works - this only affects what shows in
 the browser's address bar, not whether the proxy functions.
 
-**Where each placeholder is used:**
-- `config.json`: `general.domain` = `<phishing_domain>`; `general.unauth_url` and
+**Where each value lands, if you want to check `generate-config.sh`'s output by hand:**
+- `config.json`: `general.domain` = `PHISHING_DOMAIN`; `general.unauth_url` and
   `phishlets.am-phishlet.hostname` as shown in the file.
-- `am-phishlet.yaml`: `redirect_url`, `proxy_hosts[0]`, `auth_tokens[0].domain`, `login.domain`.
+- `am-phishlet.yaml`: `redirect_url`, `proxy_hosts[0]`, `auth_tokens[0].domain`, `login.domain`,
+  `login.path`.
 
 ## Preflight checklist (don't skip this)
 

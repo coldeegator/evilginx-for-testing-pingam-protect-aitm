@@ -1,0 +1,4 @@
+# Generated from templates by generate-config.sh - contains YOUR tenant's details, never commit.
+settings.env
+evilginx/config/config.json
+evilginx/phishlets/am-phishlet.yaml
