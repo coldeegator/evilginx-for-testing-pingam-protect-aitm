@@ -1,4 +1,4 @@
-# Evilginx AITM test harness - PingAM / PingOne Advanced Identity Cloud (ex-ForgeRock)
+# Evilginx AITM test harness - PingAM / Advanced Identity Cloud
 
 Validate whether **PingOne Protect's Adversary-in-the-Middle (AiTM) predictor** actually catches
 an AiTM proxy sitting in front of your PingAM / Advanced Identity Cloud login tree.

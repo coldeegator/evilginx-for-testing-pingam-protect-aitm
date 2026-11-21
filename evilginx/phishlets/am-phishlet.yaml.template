@@ -1,4 +1,4 @@
-# Evilginx AITM test phishlet for PingAM / PingOne Advanced Identity Cloud (ex-ForgeRock).
+# Evilginx AITM test phishlet for PingAM / Advanced Identity Cloud.
 # Adapted from Ping Identity's own evilginx-for-testing-p1-aitm phishlet (public:
 # https://github.com/pingidentity/evilginx-for-testing-p1-aitm), which targets a PingOne (P1)
 # tenant's hosted login. This version targets PingAM's REST-driven XUI login instead, which has
